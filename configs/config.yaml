@@ -1,0 +1,14 @@
+data:
+  raw_transaction_path: "data/raw/train_transaction.csv"
+  raw_identity_path: "data/raw/train_identity.csv"
+  merged_path: "data/processed/raw_merged.parquet"
+  processed_path: "data/processed/features.parquet"
+
+model:
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.05
+  eval_metric: "aucpr"
+mlflow:
+  experiment_name: "fraud-detection-prod"
+  tracking_uri: "http://127.0.0.1:5000"
