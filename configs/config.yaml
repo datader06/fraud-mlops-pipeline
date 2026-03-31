@@ -3,12 +3,28 @@ data:
   raw_identity_path: "data/raw/train_identity.csv"
   merged_path: "data/processed/raw_merged.parquet"
   processed_path: "data/processed/features.parquet"
+  reference_path: "data/reference/reference.parquet"
 
 model:
   n_estimators: 500
   max_depth: 6
   learning_rate: 0.05
   eval_metric: "aucpr"
+  scale_pos_weight: null
+  subsample: 0.8
+  colsample_bytree: 0.8
+
 mlflow:
   experiment_name: "fraud-detection-prod"
   tracking_uri: "http://127.0.0.1:5000"
+  registered_model_name: "fraud-xgboost"
+
+drift:
+  psi_threshold: 0.2
+  ks_pvalue_threshold: 0.05
+  min_batch_size: 500
+  top_n_features: 20
+
+serving:
+  host: "0.0.0.0"
+  port: 8000
