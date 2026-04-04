@@ -2,19 +2,19 @@
 xgboost==2.0.3
 scikit-learn==1.4.0
 pandas==2.2.0
-numpy==1.26.3
+numpy==1.26.4
 imbalanced-learn==0.11.0
 
 # Experiment tracking
 mlflow==2.10.0
 
 # Serving
-fastapi==0.109.0
+fastapi==0.95.2
 uvicorn==0.27.0
-pydantic==2.5.3
+pydantic==1.10.13
 
 # Monitoring
-evidently==0.4.14
+evidently==0.4.20
 
 # Visualization
 shap==0.44.0
