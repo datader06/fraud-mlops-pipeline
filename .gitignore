@@ -1,6 +1,6 @@
 # Virtual environment
 venv/
-.venv/
+venv311/
 
 # Python cache
 __pycache__/
@@ -18,9 +18,10 @@ data/
 mlruns/
 mlflow.db
 
-# Models
+# ML artifacts
 models/
 *.pkl
+reports/
 
 # Data
 data/raw/
