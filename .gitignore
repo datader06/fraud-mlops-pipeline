@@ -19,7 +19,7 @@ mlruns/
 mlflow.db
 
 # ML artifacts
-models/
+/models/
 *.pkl
 reports/
 
