@@ -1,36 +1,46 @@
 import pandas as pd
 import yaml
 import os
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 def load_config():
-    with open("configs/config.yaml", "r") as f:
+    with open(ROOT_DIR / "configs" / "config.yaml", "r") as f:
         return yaml.safe_load(f)
 
 
 def ingest_data():
     config = load_config()
-    print(config)
+    print("Config loaded:", config)
+
+    raw_transaction_path = ROOT_DIR / config["data"]["raw_transaction_path"]
+    raw_identity_path = ROOT_DIR / config["data"]["raw_identity_path"]
+    merged_path = ROOT_DIR / config["data"]["merged_path"]
 
     # Load raw data
-    train_trans = pd.read_csv(config["data"]["raw_transaction_path"])
-    train_id = pd.read_csv(config["data"]["raw_identity_path"])
+    print(f"Loading transactions from: {raw_transaction_path}")
+    train_trans = pd.read_csv(raw_transaction_path)
+
+    print(f"Loading identity from: {raw_identity_path}")
+    train_id = pd.read_csv(raw_identity_path)
 
     print("Transaction shape:", train_trans.shape)
     print("Identity shape:", train_id.shape)
 
-    # Merge
+    # Merge on TransactionID
     df = train_trans.merge(train_id, on="TransactionID", how="left")
 
     print("Merged shape:", df.shape)
 
     # Create output folder if not exists
-    os.makedirs("data/processed", exist_ok=True)
+    merged_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Save parquet
-    df.to_parquet(config["data"]["merged_path"], index=False)
+    # Save as parquet
+    df.to_parquet(merged_path, index=False)
 
-    print(" Data saved at:", config["data"]["merged_path"])
+    print(f"Data saved at: {merged_path}")
 
 
 if __name__ == "__main__":

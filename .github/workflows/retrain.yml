@@ -1,0 +1,144 @@
+name: Fraud Model Drift Check & Retraining
+
+on:
+  # Run every day at 02:00 UTC
+  schedule:
+    - cron: "0 2 * * *"
+
+  # Allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: "Force retraining even if no drift detected"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  drift-check-and-retrain:
+    name: Drift Check & Conditional Retraining
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. Checkout code
+      # ------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 2. Set up Python
+      # ------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ------------------------------------------------------------------
+      # 3. Install dependencies
+      # ------------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ------------------------------------------------------------------
+      # 4. Download processed data from DVC / artifact store
+      #    (If you're not using DVC, replace this step with your own
+      #     data fetch command, e.g. gsutil cp, aws s3 cp, etc.)
+      # ------------------------------------------------------------------
+      - name: Check for processed data
+        id: data_check
+        run: |
+          if [ -f "data/processed/features.parquet" ] && [ -f "data/reference/reference.parquet" ]; then
+            echo "data_ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "data_ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::Processed data or reference snapshot not found. Skipping drift check."
+          fi
+
+      # ------------------------------------------------------------------
+      # 5. Start MLflow server (background)
+      # ------------------------------------------------------------------
+      - name: Start MLflow tracking server
+        if: steps.data_check.outputs.data_ready == 'true'
+        run: |
+          mlflow server \
+            --host 127.0.0.1 \
+            --port 5000 \
+            --backend-store-uri sqlite:///mlruns.db \
+            --default-artifact-root ./mlartifacts &
+          sleep 5
+          echo "MLflow server started."
+
+      # ------------------------------------------------------------------
+      # 6. Run drift detection
+      # ------------------------------------------------------------------
+      - name: Run drift detection
+        if: steps.data_check.outputs.data_ready == 'true'
+        id: drift
+        run: |
+          python src/monitoring/drift.py 2>&1 | tee drift_output.txt
+          # capture exit code — drift.py exits 0 always; check output for retrain signal
+          if grep -q "Drift threshold exceeded" drift_output.txt; then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+          fi
+
+      # ------------------------------------------------------------------
+      # 7. Retrain model (if drift detected OR force_retrain=true)
+      # ------------------------------------------------------------------
+      - name: Retrain model
+        if: |
+          steps.data_check.outputs.data_ready == 'true' &&
+          (steps.drift.outputs.drift_detected == 'true' ||
+           github.event.inputs.force_retrain == 'true')
+        run: |
+          echo "Starting model retraining..."
+          python src/models/train.py 2>&1 | tee retrain_output.txt
+          echo "Retraining complete."
+
+      # ------------------------------------------------------------------
+      # 8. Upload drift report as artifact
+      # ------------------------------------------------------------------
+      - name: Upload drift report
+        if: steps.data_check.outputs.data_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report-${{ github.run_number }}
+          path: reports/drift_report.html
+          retention-days: 30
+          if-no-files-found: warn
+
+      # ------------------------------------------------------------------
+      # 9. Upload retrain log (if retraining ran)
+      # ------------------------------------------------------------------
+      - name: Upload retrain log
+        if: |
+          steps.data_check.outputs.data_ready == 'true' &&
+          (steps.drift.outputs.drift_detected == 'true' ||
+           github.event.inputs.force_retrain == 'true')
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-log-${{ github.run_number }}
+          path: retrain_output.txt
+          retention-days: 7
+
+      # ------------------------------------------------------------------
+      # 10. Summary
+      # ------------------------------------------------------------------
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Fraud Pipeline Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Data ready | ${{ steps.data_check.outputs.data_ready }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Drift detected | ${{ steps.drift.outputs.drift_detected }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Force retrain | ${{ github.event.inputs.force_retrain }} |" >> $GITHUB_STEP_SUMMARY
